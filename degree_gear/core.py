@@ -14,9 +14,9 @@ from sklearn.decomposition import PCA
 from sklearn.neighbors import NearestNeighbors
 
 from ._spatial import (
+    _build_all_hex_layers,
     _build_all_topological_layers,
     _build_delaunay_adjacency,
-    _build_hex_layers,
     _get_top_genes,
 )
 
@@ -628,7 +628,6 @@ class _MedCPTEncoder:
         device: str,
         max_length: int,
     ) -> None:
-        import torch
         from transformers import AutoModel, AutoTokenizer
 
         self.device = _resolve_device(device)
@@ -868,10 +867,7 @@ def _spatial_layers(adata: ad.AnnData, n_layers: int) -> dict[int, dict[int, lis
         coords = adata.obs[["array_row", "array_col"]].to_numpy()
         if coords.shape != (adata.n_obs, 2) or not np.isfinite(coords).all():
             raise ValueError("Degree-GEAR requires finite Visium array coordinates")
-        return {
-            cell_idx: _build_hex_layers(adata, cell_idx, n_layers)
-            for cell_idx in range(adata.n_obs)
-        }
+        return _build_all_hex_layers(adata, n_layers)
     if "spatial" not in adata.obsm:
         raise ValueError(
             "Degree-GEAR requires Visium coordinates or usable obsm['spatial']"

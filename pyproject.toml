@@ -1,6 +1,6 @@
 [project]
 name = "degree-gear"
-version = "0.1.0"
+version = "0.2.0"
 description = "Degree-GEAR: degree-preserving spatial transcriptomics clustering"
 readme = "README.md"
 license = "MIT"

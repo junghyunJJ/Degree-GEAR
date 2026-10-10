@@ -876,3 +876,73 @@ def test_graph_stage_custom_weights_change_graph_and_validate():
             GraphConfig(evidence_view_agreement_weight=-1.0),
             inplace=False,
         )
+
+
+def _reference_hex_layers(adata, cell_idx, n_layers):
+    """Per-spot hex layer builder from the AAAI-27 supplement, kept as the test oracle."""
+    from degree_gear._spatial import (
+        _extract_visium_coordinates,
+        _get_hex_neighbors_with_distance,
+    )
+
+    visium_coords = _extract_visium_coordinates(adata)
+    if visium_coords is None:
+        return {}
+    if cell_idx >= len(visium_coords):
+        return {}
+    center_row = int(visium_coords.iloc[cell_idx]["array_row"])
+    center_col = int(visium_coords.iloc[cell_idx]["array_col"])
+    neighbors_by_dist = _get_hex_neighbors_with_distance(center_row, center_col, n_layers)
+    valid_spots = set(
+        zip(visium_coords["array_row"].values, visium_coords["array_col"].values)
+    )
+    layers = {}
+    for distance, coords_list in neighbors_by_dist.items():
+        layer_indices = []
+        for n_row, n_col in coords_list:
+            if (n_row, n_col) in valid_spots:
+                mask = (visium_coords["array_row"] == n_row) & (
+                    visium_coords["array_col"] == n_col
+                )
+                if mask.any():
+                    idx = visium_coords[mask].index[0]
+                    if idx in adata.obs_names:
+                        layer_indices.append(adata.obs_names.get_loc(idx))
+        if layer_indices:
+            layers[distance] = layer_indices
+    return layers
+
+
+def _irregular_hex_adata() -> ad.AnnData:
+    rng = np.random.default_rng(3)
+    grid = [(r, 2 * c + (r % 2)) for r in range(9) for c in range(8)]
+    spots = [spot for index, spot in enumerate(grid) if index % 7 != 3]  # holes
+    spots.append(spots[5])  # two observations on one grid position
+    coords = np.asarray(spots, dtype=float)[rng.permutation(len(spots))]
+    obs = pd.DataFrame(
+        {"array_row": coords[:, 0].astype(int), "array_col": coords[:, 1]},
+        index=[f"spot{i}" for i in range(len(spots))],
+    )
+    value = ad.AnnData(X=np.ones((len(spots), 2), dtype=np.float32), obs=obs)
+    value.obsm["spatial"] = coords
+    return value
+
+
+@pytest.mark.parametrize("n_layers", [1, 2, 3])
+def test_build_all_hex_layers_matches_per_spot_reference(n_layers):
+    from degree_gear._spatial import _build_all_hex_layers
+
+    adata = _irregular_hex_adata()
+    expected = {
+        cell_idx: _reference_hex_layers(adata, cell_idx, n_layers)
+        for cell_idx in range(adata.n_obs)
+    }
+    assert sum(len(layer) for layers in expected.values() for layer in layers.values()) > 0
+    assert _build_all_hex_layers(adata, n_layers) == expected
+
+
+def test_get_top_genes_rejects_unknown_method_with_value_error():
+    from degree_gear._spatial import _get_top_genes
+
+    with pytest.raises(ValueError, match="method"):
+        _get_top_genes(np.array([2.0, 1.0]), ["a", "b"], method="unknown")

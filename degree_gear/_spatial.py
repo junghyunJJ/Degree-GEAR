@@ -1,7 +1,10 @@
 """Spatial neighbourhood helpers used by Degree-GEAR.
 
-The functions below are copied verbatim from the AAAI-27 code supplement
+The functions below come from the AAAI-27 code supplement
 (``degree_gear/tools/spatial.py`` and ``degree_gear/tools/context_embedding.py``).
+Since 0.2.0 the per-spot hex builder is replaced by the linear-time
+``_build_all_hex_layers`` (same layers, same order), and ``_get_top_genes``
+raises ``ValueError`` instead of exiting the interpreter.
 """
 
 import logging
@@ -174,55 +177,40 @@ def _extract_visium_coordinates(adata: ad.AnnData) -> Optional[pd.DataFrame]:
     return None
 
 
-def _build_hex_layers(
+def _build_all_hex_layers(
     adata: ad.AnnData,
-    cell_idx: int,
     n_layers: int = 3
-) -> Dict[int, List[int]]:
+) -> Dict[int, Dict[int, List[int]]]:
     """
-    Build hexagonal grid layers for Visium data.
-    
-    Returns dictionary mapping layer number to list of cell indices in that layer.
+    Build hexagonal grid layers for every observation of Visium data.
+
+    Returns a dictionary mapping each cell index to {layer number: cell indices}.
+    The grid-position lookup is built once, so the cost is linear in the number
+    of spots. A grid position shared by several observations resolves to the
+    first of them, and observation names must be unique (checked upstream).
     """
-    
-    # Get Visium coordinates
     visium_coords = _extract_visium_coordinates(adata)
     if visium_coords is None:
-        return {}
-    
-    # Get row/col for center cell
-    if cell_idx >= len(visium_coords):
-        return {}
-    
-    center_row = int(visium_coords.iloc[cell_idx]['array_row'])
-    center_col = int(visium_coords.iloc[cell_idx]['array_col'])
-    
-    # Get neighbors by distance
-    neighbors_by_dist = _get_hex_neighbors_with_distance(center_row, center_col, n_layers)
-    # Create valid spots set
-    valid_spots = set(zip(
-        visium_coords['array_row'].values,
-        visium_coords['array_col'].values
-    ))
-    
-    # Convert to cell indices
-    layers = {}
-    for distance, coords_list in neighbors_by_dist.items():
-        layer_indices = []
-        for n_row, n_col in coords_list:
-            if (n_row, n_col) in valid_spots:
-                # Find the index of this spot
-                mask = (visium_coords['array_row'] == n_row) & (visium_coords['array_col'] == n_col)
-                if mask.any():
-                    idx = visium_coords[mask].index[0]
-                    # Get the position in adata
-                    if idx in adata.obs_names:
-                        pos = adata.obs_names.get_loc(idx)
-                        layer_indices.append(pos)
-        if layer_indices:
-            layers[distance] = layer_indices
-    
-    return layers
+        return {cell_idx: {} for cell_idx in range(adata.n_obs)}
+
+    rows = visium_coords['array_row'].values
+    cols = visium_coords['array_col'].values
+    position_of = {}
+    for pos, spot in enumerate(zip(rows, cols)):
+        position_of.setdefault(spot, pos)
+
+    all_layers = {}
+    for cell_idx in range(len(visium_coords)):
+        center_row = int(visium_coords.iloc[cell_idx]['array_row'])
+        center_col = int(visium_coords.iloc[cell_idx]['array_col'])
+        neighbors_by_dist = _get_hex_neighbors_with_distance(center_row, center_col, n_layers)
+        layers = {}
+        for distance, coords_list in neighbors_by_dist.items():
+            layer_indices = [position_of[spot] for spot in coords_list if spot in position_of]
+            if layer_indices:
+                layers[distance] = layer_indices
+        all_layers[cell_idx] = layers
+    return all_layers
 
 
 def _build_delaunay_adjacency(
@@ -297,6 +285,4 @@ def _get_top_genes(
         sorted_indices = above_threshold[np.argsort(expression[above_threshold])[::-1]]
         return [gene_names[i] for i in sorted_indices[:top_n]]
     else:
-        import sys
-        print("Error: please set 'top_n' or 'threshold'!", file=sys.stderr)
-        sys.exit(1)  # Exit with error code 1
+        raise ValueError("method must be 'top_n', or 'threshold' with a threshold value")
