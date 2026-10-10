@@ -2,6 +2,12 @@
 
 Degree-GEAR clusters spatial transcriptomics observations into spatial domains without labels. It describes each observation's spatial neighbourhood as a gene context, embeds the contexts with frozen biomedical text encoders, refines the resulting graph while preserving node degrees, and clusters it with Leiden.
 
+<p align="center">
+  <img src="docs/figure1_degree_gear_framework.png" alt="Overview of the Degree-GEAR framework" width="100%">
+</p>
+
+**Overview of Degree-GEAR.** (a) Raw counts and spatial coordinates go through gene filtering, highly variable gene selection, library-size normalization and log transformation. Up to 20 expressed selected gene symbols per observation are ranked by expression and serialized over ordered two-hop spatial neighbourhoods (hexagonal adjacency for Visium, Delaunay neighbourhoods for single-cell assays); expression values themselves are not included in the contexts. (b) Frozen MedCPT and BioClinical ModernBERT encoders produce the view-specific affinity graphs $A_M$ and $A_L$, whose equal-weight fusion is the Direct anchor $A_D$. (c) Encoder agreement $a_{ij}$, expression-program similarity $g_{ij}$ and spatial proximity $s_{ij}$ form the edge evidence; local centering and symmetric diagonal scaling give $A_G = QBQ$, which keeps the anchor's support and restores its weighted-degree vector. (d) Leiden clustering of $A_G$ yields the spatial domains.
+
 ## Installation
 
 Requires Python 3.11 to 3.13 (3.11.9 or newer); the pinned `torch==2.8.0` has no wheels for Python 3.14. Linux, Windows and Apple-silicon macOS are supported; Intel macOS is not, because `torch==2.8.0` has no wheels for it.
