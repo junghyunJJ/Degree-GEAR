@@ -1,0 +1,29 @@
+[project]
+name = "degree-gear"
+version = "0.1.0"
+description = "Degree-GEAR: degree-preserving spatial transcriptomics clustering"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "junghyunJJ", email = "junghyunjj219@gmail.com" }]
+requires-python = ">=3.11.9"
+dependencies = [
+    "igraph==0.11.9",
+    "leidenalg==0.10.2",
+    "pandas==2.3.1",
+    "scanpy==1.11.4",
+    "scikit-misc==0.5.1",
+    "sentence-transformers==5.1.0",
+    "torch==2.8.0",
+    "transformers==4.55.0",
+]
+
+[dependency-groups]
+dev = ["pytest==8.4.1"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["degree_gear"]
