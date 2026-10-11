@@ -20,17 +20,16 @@ The package provides:
    - [2.1 The problem it addresses](#21-the-problem-it-addresses)
    - [2.2 The pipeline step by step](#22-the-pipeline-step-by-step)
    - [2.3 Design decisions](#23-design-decisions)
-3. [Architecture](#3-architecture)
-4. [Quick Start](#4-quick-start)
-5. [Usage in Detail](#5-usage-in-detail)
-   - [5.1 Input requirements](#51-input-requirements)
-   - [5.2 One-call route](#52-one-call-route)
-   - [5.3 Staged route](#53-staged-route)
-   - [5.4 Configuration reference](#54-configuration-reference)
-   - [5.5 Encoders, cache, device and offline use](#55-encoders-cache-device-and-offline-use)
-   - [5.6 Outputs](#56-outputs)
-6. [Testing](#6-testing)
-7. [License](#7-license)
+3. [Quick Start](#3-quick-start)
+4. [Usage in Detail](#4-usage-in-detail)
+   - [4.1 Input requirements](#41-input-requirements)
+   - [4.2 One-call route](#42-one-call-route)
+   - [4.3 Staged route](#43-staged-route)
+   - [4.4 Configuration reference](#44-configuration-reference)
+   - [4.5 Encoders, cache, device and offline use](#45-encoders-cache-device-and-offline-use)
+   - [4.6 Outputs](#46-outputs)
+5. [Testing](#5-testing)
+6. [License](#6-license)
 
 ---
 
@@ -72,7 +71,7 @@ Notation: $N$ observations, $X$ the selected, normalized expression matrix with 
 
 #### Step 1 — Label-free preprocessing (`preprocess_degree_gear`)
 
-The input checks in [§5.1](#51-input-requirements) run first, and the spatial neighbour layers are computed on all observations before any change is made. The stage then runs, in this order:
+The input checks in [§4.1](#41-input-requirements) run first, and the spatial neighbour layers are computed on all observations before any change is made. The stage then runs, in this order:
 
 1. `sc.pp.filter_genes(min_cells=10)`: drop genes detected in fewer than 10 observations.
 2. Seurat v3 selection of 3,000 highly variable genes (`sc.pp.highly_variable_genes(flavor="seurat_v3")`) on the **filtered raw counts**. If 3,000 or fewer genes remain, all of them are kept and selection is skipped.
@@ -178,62 +177,16 @@ Iteration stops when $\max_i \lvert \hat{d}_i - d^D_i \rvert / d^D_i \leq 10^{-6
 
 ---
 
-## 3. Architecture
+## 3. Quick Start
 
-```mermaid
-flowchart TD
-    IN[/"AnnData<br/>X: raw counts<br/>obsm['spatial'], optional obs['array_row'] + obs['array_col']"/]
-    PP["<b>preprocess_degree_gear</b><br/>filter genes → Seurat v3 selection → normalize_total → log1p → subset<br/>neighbour layers → gene contexts · randomized PCA program"]
-    EM["<b>embed_degree_gear</b><br/>MedCPT Article Encoder (512 tokens)<br/>BioClinical ModernBERT embeddings (8,192 tokens)"]
-    GR["<b>build_degree_gear_graph</b><br/>A_M, A_L → Direct anchor A_D<br/>edge evidence → local centering → B<br/>A_G = QBQ, same support and weighted degrees as A_D"]
-    LD["<b>leiden_degree_gear</b><br/>igraph Leiden on A_G"]
-    OUT[/"obs['degree_gear']"/]
-
-    IN --> PP
-    PP -->|"obsm: degree_gear_context"| EM
-    PP -.->|"obsm: X_degree_gear_program"| GR
-    IN -.->|"obsm: spatial"| GR
-    EM -->|"obsm: X_degree_gear_medcpt, X_degree_gear_modernbert"| GR
-    GR -->|"obsp: degree_gear_connectivities"| LD
-    LD --> OUT
-```
-
-| Component | Location |
-|-----------|----------|
-| Public API, `__version__`, allocator setting | `degree_gear/__init__.py` |
-| Configuration dataclasses, `DEFAULT_DEGREE_GEAR_CONFIG`, `run_degree_gear` | `degree_gear/core.py` |
-| Preprocessing: `preprocess_degree_gear`, `_preflight_preprocessing`, `_select_seurat_v3`, `_serialize_contexts`, `_pca`, `_row_l2` | `degree_gear/core.py` |
-| Neighbour-layer dispatch: `_spatial_layers` | `degree_gear/core.py` |
-| Neighbour layers and gene ranking: `_build_all_hex_layers`, `_build_delaunay_adjacency`, `_build_all_topological_layers`, `_get_top_genes` | `degree_gear/_spatial.py` |
-| Encoders: `embed_degree_gear`, `_load_encoders`, `_MedCPTEncoder`, `_resolve_device` | `degree_gear/core.py` |
-| Graph: `build_degree_gear_graph`, `_embedding_connectivities`, `_clean_symmetric`, `_edge_confidence`, `_locally_centered_confidence`, `_match_direct_degrees`, `_graph_contract` | `degree_gear/core.py` |
-| Clustering: `leiden_degree_gear` | `degree_gear/core.py` |
-| Example script | `examples/degree_gear_pipeline.py` |
-| Tests | `tests/test_degree_gear.py` |
-
-AnnData keys read and written by each stage (default key names):
-
-| Stage | Reads | Writes |
-|-------|-------|--------|
-| `preprocess_degree_gear` | `X` (raw counts), `obs["array_row"]` + `obs["array_col"]` or `obsm["spatial"]` | `X` (replaced by log-normalized values; unselected genes dropped), `obsm["degree_gear_context"]`, `obsm["X_degree_gear_program"]`, `uns["degree_gear"]["preprocessing"]` |
-| `embed_degree_gear` | `obsm["degree_gear_context"]` | `obsm["X_degree_gear_medcpt"]`, `obsm["X_degree_gear_modernbert"]`, `uns["degree_gear"]["embedding"]` |
-| `build_degree_gear_graph` | `obsm["X_degree_gear_medcpt"]`, `obsm["X_degree_gear_modernbert"]`, `obsm["X_degree_gear_program"]`, `obsm["spatial"]` | `obsp["degree_gear_direct_connectivities"]` ($A_D$), `obsp["degree_gear_connectivities"]` ($A_G$), `uns["degree_gear"]["graph"]` |
-| `leiden_degree_gear` | `obsp["degree_gear_connectivities"]` | `obs["degree_gear"]`, `uns["degree_gear"]["leiden"]` |
-
-The first stage to run also adds `uns["degree_gear"]["provenance"]`. Key names come from the configuration (see [§5.4](#54-configuration-reference)). If you rename a key in the stage that writes it, rename it in the stage that reads it too. Two keys are fixed: `embed_degree_gear` always writes `X_degree_gear_medcpt` and `X_degree_gear_modernbert`, and the Delaunay neighbour layers always use `obsm["spatial"]`.
-
----
-
-## 4. Quick Start
-
-### 4.1 Prerequisites
+### 3.1 Prerequisites
 
 - Python 3.11 to 3.13 (3.11.9 or newer). The pinned `torch==2.8.0` has no wheels for Python 3.14.
 - Linux, Windows or Apple-silicon macOS. Intel macOS is not supported, because `torch==2.8.0` has no wheels for it.
 - Network access on the first real run, to download the two encoders from Hugging Face.
 - A CUDA GPU is optional. With the default `device="auto"`, the encoders use CUDA when PyTorch can see a GPU and the CPU otherwise.
 
-### 4.2 Install
+### 3.2 Install
 
 ```bash
 pip install git+https://github.com/junghyunJJ/Degree-GEAR
@@ -247,7 +200,7 @@ cd Degree-GEAR
 uv sync --locked
 ```
 
-### 4.3 Offline smoke run
+### 3.3 Offline smoke run
 
 The example script is not part of the installed package, so run it from a clone. In a uv checkout, prefix the commands with `uv run`.
 
@@ -257,19 +210,19 @@ python examples/degree_gear_pipeline.py --smoke
 
 This runs the full pipeline on a 9-spot synthetic grid with deterministic fake encoders (no model download) and prints a summary such as `degree_gear clusters=2 observations=9`.
 
-### 4.4 Run on your data
+### 3.4 Run on your data
 
 ```bash
 python examples/degree_gear_pipeline.py --input input.h5ad --output degree_gear_result.h5ad
 ```
 
-The script runs `run_degree_gear` with the default configuration and writes the result to `--output`. Check the input against [§5.1](#51-input-requirements) first.
+The script runs `run_degree_gear` with the default configuration and writes the result to `--output`. Check the input against [§4.1](#41-input-requirements) first.
 
 ---
 
-## 5. Usage in Detail
+## 4. Usage in Detail
 
-### 5.1 Input requirements
+### 4.1 Input requirements
 
 An `AnnData` object with:
 
@@ -293,7 +246,7 @@ Reference annotations are not used by the method.
 
 The selected-gene matrix (at most `n_top_genes` columns) is converted to a dense array for context serialization and PCA.
 
-### 5.2 One-call route
+### 4.2 One-call route
 
 ```python
 import degree_gear as dg
@@ -302,9 +255,9 @@ result = dg.run_degree_gear(adata, inplace=False)
 result.obs["degree_gear"]
 ```
 
-`run_degree_gear(adata, config=DEFAULT_DEGREE_GEAR_CONFIG, *, encoders=None, inplace=True)` runs the four stages in order. With `inplace=False` it works on a copy and returns it. With the default `inplace=True` it modifies `adata` (including `adata.X`) and returns `None`. `config` must be a full `DegreeGearConfig`; `encoders` is described in [§5.5](#55-encoders-cache-device-and-offline-use).
+`run_degree_gear(adata, config=DEFAULT_DEGREE_GEAR_CONFIG, *, encoders=None, inplace=True)` runs the four stages in order. With `inplace=False` it works on a copy and returns it. With the default `inplace=True` it modifies `adata` (including `adata.X`) and returns `None`. `config` must be a full `DegreeGearConfig`; `encoders` is described in [§4.5](#45-encoders-cache-device-and-offline-use).
 
-### 5.3 Staged route
+### 4.3 Staged route
 
 Each stage takes either the full `DegreeGearConfig` or its own stage config, and works in place by default:
 
@@ -335,7 +288,7 @@ dg.leiden_degree_gear(adata, dg.LeidenConfig(resolution=1.0, key_added="degree_g
 
 `uns["degree_gear"]["leiden"]` always describes the most recent Leiden call. When `preprocess_degree_gear` gets only a `PreprocessingConfig`, it writes to the default `EmbeddingConfig` key names.
 
-### 5.4 Configuration reference
+### 4.4 Configuration reference
 
 All configuration classes are frozen dataclasses. Build a new instance to change a value:
 
@@ -416,6 +369,8 @@ The model, revision, cache, device and maximum-length fields apply only when the
 
 Each weight group must be finite and non-negative with a positive sum.
 
+`embed_degree_gear` always writes `X_degree_gear_medcpt` and `X_degree_gear_modernbert`, so change `medcpt_key` and `modernbert_key` only if you write those arrays yourself. The Delaunay neighbour layers always use `obsm["spatial"]`, whatever `spatial_key` says.
+
 **`LeidenConfig`**
 
 | Field | Default | Description |
@@ -428,7 +383,7 @@ Each weight group must be finite and non-negative with a positive sum.
 | `n_iterations` | `2` | Number of Leiden iterations (at least 1). |
 | `directed` | `False` | Must be `False`; the graph is undirected. |
 
-### 5.5 Encoders, cache, device and offline use
+### 4.5 Encoders, cache, device and offline use
 
 **Download and cache.** The first real call downloads the pinned revisions of `ncbi/MedCPT-Article-Encoder` and `NeuML/bioclinical-modernbert-base-embeddings` into the Hugging Face cache (by default `~/.cache/huggingface/hub`).
 
@@ -458,7 +413,7 @@ HF_HUB_OFFLINE=1 python examples/degree_gear_pipeline.py --input input.h5ad --ou
 
 `FakeMedCPT` and `FakeModernBERT` in `examples/degree_gear_pipeline.py` follow this interface. When you pass encoders, `uns["degree_gear"]["embedding"]` still records the revisions named in the config.
 
-### 5.6 Outputs
+### 4.6 Outputs
 
 | Slot | Key | Content |
 |------|-----|---------|
@@ -486,7 +441,7 @@ The result can be saved with `result.write_h5ad(...)`.
 
 ---
 
-## 6. Testing
+## 5. Testing
 
 From a clone synced with `uv sync --locked` (which installs the `dev` group with `pytest`):
 
@@ -504,7 +459,7 @@ uv run python examples/degree_gear_pipeline.py --smoke
 
 ---
 
-## 7. License
+## 6. License
 
 MIT — see [LICENSE](./LICENSE). Copyright (c) 2026 junghyunJJ.
 
