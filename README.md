@@ -60,9 +60,9 @@ The encoder views, the expression matrix and the spatial coordinates each say so
 
 Degree-GEAR fixes both quantities. It builds the anchor graph $A_D$ once, then lets the evidence only redistribute each node's affinity among the neighbours it already has. The refined graph $A_G$ satisfies
 
-$$
+```math
 A_G = A_G^\top, \qquad A_G \geq 0, \qquad \operatorname{supp}(A_G) = \operatorname{supp}(A_D), \qquad A_G \mathbf{1} = A_D \mathbf{1}.
-$$
+```
 
 Because the weighted degrees $k_i$ are unchanged, the null-model term $k_i k_j / 2m$ of weighted modularity is the same for $A_D$ and $A_G$. The only difference Leiden sees is how each node's affinity is split among its existing neighbours.
 
@@ -88,7 +88,7 @@ No observation is removed, and no `obs` column other than `array_row`/`array_col
 
 Neighbour layers come from one of two sources:
 
-- **Hexagonal grid** (both `obs["array_row"]` and `obs["array_col"]` present): layer $l$ holds the observations at hexagonal grid distance $l$ on the Visium grid (neighbour offsets $(0,\pm 2)$ and $(\pm 1,\pm 1)$). Grid positions without an observation are skipped but still count toward the distance.
+- **Hexagonal grid** (both `obs["array_row"]` and `obs["array_col"]` present): layer $l$ holds the observations at hexagonal grid distance $l$ on the Visium grid (neighbour offsets $`(0,\pm 2)`$ and $`(\pm 1,\pm 1)`$). Grid positions without an observation are skipped but still count toward the distance.
 - **Delaunay triangulation** (neither column present): a Delaunay triangulation of $P$ defines adjacency, and layer $l$ holds the observations reached in $l$ breadth-first steps.
 
 For the centre observation and for each neighbour in layers 1 and 2, the stage writes up to 20 gene symbols with positive normalized expression, highest first. Each segment starts with a marker, neighbours within a layer are ordered by observation index, and segments are joined with spaces. A neighbour with no expressed selected gene is left out. An abridged context:
@@ -110,23 +110,23 @@ Both models run in inference mode at pinned revisions. With the default models, 
 
 #### Step 4 — View graphs and the Direct anchor (`build_degree_gear_graph`)
 
-For each view $Y \in \{M, L\}$, the stage runs PCA (`sc.pp.pca`, seed 0) with $r_Y = \min(50, N-1, \dim Y - 1)$ components, then `sc.pp.neighbors(n_neighbors=15)`, whose UMAP connectivities give $A_M$ and $A_L$. The anchor is
+For each view $`Y \in \{M, L\}`$, the stage runs PCA (`sc.pp.pca`, seed 0) with $r_Y = \min(50, N-1, \dim Y - 1)$ components, then `sc.pp.neighbors(n_neighbors=15)`, whose UMAP connectivities give $A_M$ and $A_L$. The anchor is
 
-$$
+```math
 A_D = \mathcal{C}\left(\tfrac{1}{2} A_M + \tfrac{1}{2} A_L\right),
-$$
+```
 
-where $\mathcal{C}(A)$ replaces $A$ with $(A + A^\top)/2$, sets the diagonal to zero and removes explicit zeros. Every later operation is restricted to the anchor edges $\mathcal{E}_D = \{(i,j) : i < j,\ A_{D,ij} > 0\}$. The anchor weighted degrees are $d^D = A_D \mathbf{1}$.
+where $\mathcal{C}(A)$ replaces $A$ with $(A + A^\top)/2$, sets the diagonal to zero and removes explicit zeros. Every later operation is restricted to the anchor edges $`\mathcal{E}_D = \{(i,j) : i \lt j,\ A_{D,ij} \gt 0\}`$. The anchor weighted degrees are $d^D = A_D \mathbf{1}$.
 
 #### Step 5 — Edge evidence
 
 For every $(i,j) \in \mathcal{E}_D$:
 
-$$
+```math
 a_{ij} = 1 - \frac{\lvert A_{M,ij} - A_{L,ij} \rvert}{\max(A_{M,ij} + A_{L,ij},\ \varepsilon)}, \qquad
 g_{ij} = \operatorname{clip}(Z_i^\top Z_j,\ 0,\ 1), \qquad
 s_{ij} = \exp\left(-\frac{\lVert P_i - P_j \rVert_2}{h}\right).
-$$
+```
 
 - $a_{ij}$ (encoder-view agreement) is near 1 when both views give the edge similar affinity. An edge missing from one view has affinity 0 there. $\varepsilon$ is float64 machine epsilon.
 - $g_{ij}$ (expression-program similarity) is the clipped cosine of the program vectors.
@@ -138,11 +138,11 @@ The composite evidence is $c_{ij} = (a_{ij} + g_{ij} + s_{ij}) / 3$. All four qu
 
 Each edge is compared with the affinity-weighted mean evidence around both of its endpoints:
 
-$$
+```math
 \mu_i = \frac{\sum_j A_{D,ij}\, c_{ij}}{d^D_i}, \qquad
 \tilde{c}_{ij} = c_{ij} - \frac{\mu_i + \mu_j}{2}, \qquad
 B_{ij} = A_{D,ij} \exp(\tau\, \tilde{c}_{ij}), \quad \tau = 1.
-$$
+```
 
 Edges with above-average evidence for their neighbourhood gain weight, and the rest lose weight. $B$ is symmetric and has the same support as $A_D$.
 
@@ -150,10 +150,10 @@ Edges with above-average evidence for their neighbourhood gain weight, and the r
 
 $B$ no longer has the anchor's weighted degrees. A Sinkhorn-style symmetric scaling restores them:
 
-$$
+```math
 A_G = Q B Q, \qquad Q = \operatorname{diag}(q), \qquad
 q \leftarrow q \odot \sqrt{\frac{d^D}{q \odot (B q)}}, \quad q^{(0)} = \mathbf{1}.
-$$
+```
 
 Iteration stops when $\max_i \lvert \hat{d}_i - d^D_i \rvert / d^D_i \leq 10^{-6}$, where $\hat{d} = q \odot (Bq)$, or after 200 updates. If the final graph misses the tolerance, the stage raises `ValueError`. It then checks that $A_G$ has exactly the support of $A_D$ and that the degree error is within tolerance, raises otherwise, and records the result in `uns["degree_gear"]["graph"]["contract"]`.
 
