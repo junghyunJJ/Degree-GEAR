@@ -61,7 +61,7 @@ The encoder views, the expression matrix and the spatial coordinates each say so
 Degree-GEAR fixes both quantities. It builds the anchor graph $A_D$ once, then lets the evidence only redistribute each node's affinity among the neighbours it already has. The refined graph $A_G$ satisfies
 
 ```math
-A_G = A_G^\top, \qquad A_G \geq 0, \qquad \operatorname{supp}(A_G) = \operatorname{supp}(A_D), \qquad A_G \mathbf{1} = A_D \mathbf{1}.
+A_G = A_G^\top, \qquad A_G \geq 0, \qquad \mathrm{supp}(A_G) = \mathrm{supp}(A_D), \qquad A_G \mathbf{1} = A_D \mathbf{1}.
 ```
 
 Because the weighted degrees $k_i$ are unchanged, the null-model term $k_i k_j / 2m$ of weighted modularity is the same for $A_D$ and $A_G$. The only difference Leiden sees is how each node's affinity is split among its existing neighbours.
@@ -124,7 +124,7 @@ For every $(i,j) \in \mathcal{E}_D$:
 
 ```math
 a_{ij} = 1 - \frac{\lvert A_{M,ij} - A_{L,ij} \rvert}{\max(A_{M,ij} + A_{L,ij},\ \varepsilon)}, \qquad
-g_{ij} = \operatorname{clip}(Z_i^\top Z_j,\ 0,\ 1), \qquad
+g_{ij} = \mathrm{clip}(Z_i^\top Z_j,\ 0,\ 1), \qquad
 s_{ij} = \exp\left(-\frac{\lVert P_i - P_j \rVert_2}{h}\right).
 ```
 
@@ -151,7 +151,7 @@ Edges with above-average evidence for their neighbourhood gain weight, and the r
 $B$ no longer has the anchor's weighted degrees. A Sinkhorn-style symmetric scaling restores them:
 
 ```math
-A_G = Q B Q, \qquad Q = \operatorname{diag}(q), \qquad
+A_G = Q B Q, \qquad Q = \mathrm{diag}(q), \qquad
 q \leftarrow q \odot \sqrt{\frac{d^D}{q \odot (B q)}}, \quad q^{(0)} = \mathbf{1}.
 ```
 
